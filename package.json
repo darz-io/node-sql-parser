@@ -1,5 +1,8 @@
 {
-  "name": "node-sql-parser",
+  "name": "@darz-io/node-sql-parser",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "4.11.0",
   "description": "simple node sql parser",
   "main": "index.js",
@@ -13,7 +16,7 @@
     "coverLocal": "cross-env NODE_ENV=coverage nyc --reporter=lcov --reporter=text npm run test",
     "cover:run": "cross-env NODE_ENV=coverage nyc --reporter=text-lcov npm run test",
     "cover": "npm run cover:run && nyc report --reporter=text-lcov | coveralls",
-    "release": "npm run build && npm publish output/prod"
+    "release": "npm run build && cd output/prod && npm publish"
   },
   "repository": {
     "type": "git",
