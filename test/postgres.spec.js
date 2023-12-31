@@ -1582,8 +1582,26 @@ describe('Postgres', () => {
       {
         title: 'crosstab tablefunc',
         sql: [
-          `SELECT * FROM crosstab( 'select student, subject, evaluation_result from evaluations order by 1,2') AS final_result(Student TEXT, Geography NUMERIC,History NUMERIC,Language NUMERIC,Maths NUMERIC,Music NUMERIC);`,
-          `SELECT * FROM crosstab('select student, subject, evaluation_result from evaluations order by 1,2') AS final_result("Student" TEXT, "Geography" NUMERIC, "History" NUMERIC, "Language" NUMERIC, "Maths" NUMERIC, "Music" NUMERIC)`
+          `SELECT * FROM crosstab( 'select student, subject, evaluation_result from evaluations order by 1,2', $$VALUES ('t'::text), ('f'::text)$$) AS final_result(Student TEXT, Geography NUMERIC,History NUMERIC,Language NUMERIC,Maths NUMERIC,Music NUMERIC);`,
+          `SELECT * FROM crosstab('select student, subject, evaluation_result from evaluations order by 1,2', $$VALUES ('t'::text), ('f'::text)$$) AS final_result("Student" TEXT, "Geography" NUMERIC, "History" NUMERIC, "Language" NUMERIC, "Maths" NUMERIC, "Music" NUMERIC)`
+        ]
+      },
+      {
+        title: 'accentuated characters in column',
+        sql: [
+          "SELECT * FROM test WHERE théâtre = 'Molière'",
+          `SELECT * FROM "test" WHERE "théâtre" = 'Molière'`
+        ]
+      },
+      {
+        title: 'cast when expr is additive expr',
+        sql: [
+          `SELECT
+            CASE
+                WHEN updated IS NOT NULL THEN (updated - created)::TIME
+            END AS some_time
+          FROM some_table`,
+          'SELECT CASE WHEN "updated" IS NOT NULL THEN ("updated" - "created")::TIME END AS "some_time" FROM "some_table"'
         ]
       },
     ]

@@ -1656,17 +1656,18 @@ columns_list
       return createList(head, tail);
     }
 
-column_offset_expr
-  = n:expr __ LBRAKE __ l:literal_numeric __ RBRAKE {
-    return {
-      expr: n,
-      offset: `[${l.value}]`
-    }
+column_offset_expr_list
+  = l:(LBRAKE __ (literal_numeric / literal_string) __ RBRAKE)+ {
+    return l.map(item => ({ value: item[2] }))
   }
-  / n:expr __ LBRAKE __ t:(KW_OFFSET / KW_ORDINAL / KW_SAFE_OFFSET / KW_SAFE_ORDINAL) __ LPAREN __ l:literal_numeric __ RPAREN __ RBRAKE {
+  / l:(LBRAKE __ (KW_OFFSET / KW_ORDINAL / KW_SAFE_OFFSET / KW_SAFE_ORDINAL) __ LPAREN __ (literal_numeric / literal_string) __ RPAREN __ RBRAKE)+ {
+    return l.map(item => ({ name: item[2], value: item[6] }))
+  }
+column_offset_expr
+  = n:expr __ l:column_offset_expr_list {
     return {
       expr: n,
-      offset: `[${t}(${l.value})]`
+      offset: l
     }
   }
 
@@ -1715,8 +1716,8 @@ column_list_item
         ...getLocationObject()
       }
     }
-  / c:column_offset_expr __ as:alias_clause? {
-    columnList.add(`select::null::${c}`)
+  / c:column_offset_expr __ s:(DOT __ column_without_kw)? __ as:alias_clause? {
+    if (s) c.suffix = `.${s[2]}`
     return {
         expr: {
           type: 'column_ref',
@@ -1876,6 +1877,15 @@ table_name
       }
       return obj;
     }
+or_and_expr
+	= head:expr tail:(__ (KW_AND / KW_OR) __ expr)* {
+    const len = tail.length
+    let result = head
+    for (let i = 0; i < len; ++i) {
+      result = createBinaryExpr(tail[i][1], result, tail[i][3])
+    }
+    return result
+  }
 
 on_clause
   = KW_ON __ e:or_and_where_expr { return e; }
@@ -1968,13 +1978,13 @@ window_frame_preceding
 window_frame_current_row
   = 'CURRENT'i __ 'ROW'i {
     // => { type: 'single_quote_string'; value: string }
-    return { type: 'single_quote_string', value: 'current row' }
+    return { type: 'single_quote_string', value: 'current row', ...getLocationObject() }
   }
 
 window_frame_value
   = s:'UNBOUNDED'i {
     // => literal_string
-    return { type: 'single_quote_string', value: s.toUpperCase() }
+    return { type: 'single_quote_string', value: s.toUpperCase(), ...getLocationObject() }
   }
   / literal_numeric
 
@@ -2007,7 +2017,8 @@ limit_clause
       if (tail) res.push(tail[2]);
       return {
         seperator: tail && tail[0] && tail[0].toLowerCase() || '',
-        value: res
+        value: res,
+        ...getLocationObject(),
       };
     }
 
@@ -2026,6 +2037,7 @@ expr_list
 
 _expr
   = struct_expr
+  / json_expr
   / logic_operator_expr // support concatenation operator || and &&
   / or_expr
   / unary_expr
@@ -2071,6 +2083,15 @@ array_expr
       keyword: s && 'array',
       brackets: l === '[' ? true : false,
       parentheses: l === '(' ? true: false
+    }
+  }
+
+json_expr
+  = KW_JSON __ l:literal_list {
+    return {
+      type: 'json',
+      keyword: 'json',
+      expr_list: l
     }
   }
 
@@ -2252,6 +2273,7 @@ multiplicative_operator
 primary
   = array_expr
   / struct_expr
+  / json_expr
   / cast_expr
   / literal
   / aggr_func
@@ -2320,15 +2342,28 @@ case_else = KW_ELSE __ result:expr {
   }
 
 column_ref
-  =  tbl:column_without_kw col:(__ DOT __ column_without_kw)+  {
+  = tbl:column_without_kw col:(__ DOT __ column_without_kw)+ __ cof:(column_offset_expr_list __ (DOT __ column_without_kw)?)? {
       const cols = col.map(c => c[3])
       columnList.add(`select::${tbl}::${cols[0]}`)
+      const column = cof
+      ? {
+          column: {
+            expr: {
+              type: 'column_ref',
+              table: null,
+              column: cols[0],
+              subFields: cols.slice(1)
+            },
+            offset: cof && cof[0],
+            suffix: cof && cof[2] && `.${cof[2][2]}`,
+          }
+        }
+      : { column: cols[0], subFields: cols.slice(1) }
       return {
         type: 'column_ref',
         table: tbl,
-        column: cols[0],
-        subFields: cols.slice(1),
-        ...getLocationObject()
+        ...column,
+        ...getLocationObject(),
       };
     }
   / col:column {
@@ -2478,8 +2513,21 @@ aggr_fun_count
 
 count_arg
   = e:star_expr { return { expr: e, ...getLocationObject() }; }
-  / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN __ or:order_by_clause? {  return { distinct: d, expr: c, orderby: or, parentheses: true, ...getLocationObject() }; }
-  / d:KW_DISTINCT? __ c:expr __ or:order_by_clause? {  return { distinct: d, expr: c, orderby: or, parentheses: false, ...getLocationObject() }; }
+  / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN tail:(__ (KW_AND / KW_OR) __ expr)* __ or:order_by_clause? {
+    const len = tail.length
+    let result = c
+    result.parentheses = true
+    for (let i = 0; i < len; ++i) {
+      result = createBinaryExpr(tail[i][1], result, tail[i][3])
+    }
+    return {
+      distinct: d,
+      expr: result,
+      orderby: or,
+      ...getLocationObject()
+    };
+  }
+  / d:KW_DISTINCT? __ c:or_and_expr __ or:order_by_clause?  { return { distinct: d, expr: c, orderby: or, ...getLocationObject() }; }
 
 star_expr
   = "*" { return { type: 'star', value: '*' }; }
@@ -2671,13 +2719,15 @@ literal_string
   = r:'R'i? __ ca:("'" single_char* "'") {
       return {
         type: r ? 'regex_string' : 'single_quote_string',
-        value: ca[1].join('')
+        value: ca[1].join(''),
+        ...getLocationObject()
       };
     }
   / r:'R'i? __ ca:("\"" single_quote_char* "\"") {
       return {
         type: r ? 'regex_string' : 'string',
-        value: ca[1].join('')
+        value: ca[1].join(''),
+        ...getLocationObject()
       };
     }
 

@@ -6,7 +6,12 @@
 
 export interface With {
   name: string;
-  stmt: any[];
+  stmt: {
+    _parentheses?: boolean;
+    tableList: string[];
+    columnList: string[];
+    ast: Select;
+  };
   columns?: any[];
 }
 import { LocationRange } from "pegjs";
@@ -18,6 +23,7 @@ export interface Option {
   database?: string;
   type?: string;
   includeLocations?: boolean;
+  trimQuery?: boolean;
 }
 export interface TableColumnAst {
   tableList: string[];
@@ -77,53 +83,61 @@ export interface Star {
 export interface AggrFunc {
   type: "aggr_func";
   name: string;
-  args: ColumnRef | AggrFunc | Star | null;
+  args: {
+    expr: ColumnRef | AggrFunc | Star | null;
+    distinct: "DISTINCT" | null;
+    orderby: OrderBy[] | null;
+    parentheses?: boolean;
+  };
   loc?: LocationRange;
 }
 export interface Function {
-  type: 'function';
+  type: "function";
   name: string;
-  args: expr_list;
+  args: ExprList;
   suffix?: any;
   loc?: LocationRange;
 }
 export interface Column {
   expr: ColumnRef | AggrFunc | Function;
-  as: string;
+  as: string | null;
+  type?: string;
   loc?: LocationRange;
 }
 
-export type Param = { type: 'param'; value: string, loc?: LocationRange; };
+export type Param = { type: "param"; value: string, loc?: LocationRange; };
+
+export type Value = { type: string; value: any, loc?: LocationRange; };
 
 export type Expr =
   | {
-    type: 'binary_expr';
-    operator: 'AND' | 'OR';
+    type: "binary_expr";
+    operator: "AND" | "OR";
     left: Expr;
     right: Expr;
     loc?: LocationRange;
   }
   | {
-    type: 'binary_expr';
+    type: "binary_expr";
     operator: string;
-    left: ColumnRef | Param;
-    right: ColumnRef | Param;
+    left: ColumnRef | Param | Value;
+    right: ColumnRef | Param | Value;
     loc?: LocationRange;
   };
 
-export type expr_list = {
-  type: 'expr_list';
+export type ExprList = {
+  type: "expr_list";
   value: Expr[];
   loc?: LocationRange;
-}
+};
 export interface Select {
-  with: With | null;
+  with: With[] | null;
   type: "select";
   options: any[] | null;
   distinct: "DISTINCT" | null;
   columns: any[] | Column[];
   from: Array<From | Dual | any> | null;
-  where: Expr;
+  where: Expr | Function | null;
   groupby: ColumnRef[] | null;
   having: any[] | null;
   orderby: OrderBy[] | null;
@@ -147,20 +161,20 @@ export interface Update {
   db: string | null;
   table: Array<From | Dual> | null;
   set: SetList[];
-  where: Expr;
+  where: Expr | Function | null;
   loc?: LocationRange;
 }
 export interface Delete {
   type: "delete";
   table: any;
   from: Array<From | Dual>;
-  where: Expr;
+  where: Expr | Function | null;
   loc?: LocationRange;
 }
 
 export interface Alter {
   type: "alter";
-  table: From;
+  table: From[];
   expr: any;
   loc?: LocationRange;
 }
@@ -214,6 +228,12 @@ export interface Create {
   loc?: LocationRange;
 }
 
+export interface Drop {
+  type: "drop";
+  keyword: string;
+  name: any[];
+}
+
 export type AST =
   | Use
   | Select
@@ -221,7 +241,8 @@ export type AST =
   | Update
   | Delete
   | Alter
-  | Create;
+  | Create
+  | Drop;
 
 export class Parser {
   constructor();
