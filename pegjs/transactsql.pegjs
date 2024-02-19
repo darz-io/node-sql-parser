@@ -13,6 +13,7 @@
     'CALL': true,
     'CASE': true,
     'CREATE': true,
+    'CROSS': true,
     'CONTAINS': true,
     'CURRENT_DATE': true,
     'CURRENT_TIME': true,
@@ -1711,7 +1712,8 @@ table_base
 
 join_op
   = a:(KW_LEFT / KW_RIGHT / KW_FULL) __ s:KW_OUTER? __ KW_JOIN { return [a[0].toUpperCase(), s && s[0], 'JOIN'].filter(v => v).join(' '); }
-  / KW_CROSS __ KW_JOIN { return 'CROSS JOIN' }
+  / KW_CROSS __ j:(KW_JOIN / KW_APPLY) { return `CROSS ${j[0].toUpperCase()}` }
+  / a:KW_OUTER __ KW_APPLY { return 'OUTER APPLY' }
   / a:(KW_INNER)? __ KW_JOIN { return a ? 'INNER JOIN' : 'JOIN' }
 
 table_name
@@ -1743,7 +1745,15 @@ table_name
       v.table = v.name;
       return v;
     }
-
+or_and_expr
+	= head:expr tail:(__ (KW_AND / KW_OR) __ expr)* {
+    const len = tail.length
+    let result = head
+    for (let i = 0; i < len; ++i) {
+      result = createBinaryExpr(tail[i][1], result, tail[i][3])
+    }
+    return result
+  }
 on_clause
   = KW_ON __ e:or_and_where_expr { return e; }
 
@@ -2250,19 +2260,24 @@ primary
   / var_decl
 
 column_ref
-  = tbl:ident __ DOT __ col:column {
-      columnList.add(`select::${tbl}::${col}`);
+  = db:(ident __ DOT)? __ schema:(ident __ DOT)? __ tbl:(ident __ DOT)? __ col:column {
+      const obj = { table: null, db: null, schema: null }
+      if (db !== null) {
+        obj.table = db[0]
+      }
+      if (schema !== null) {
+        obj.table = schema[0]
+        obj.schema = db[0]
+      }
+      if (tbl !== null) {
+        obj.table = tbl[0]
+        obj.db = db[0]
+        obj.schema = schema[0]
+      }
+      columnList.add(`select::${[obj.db, obj.schema, obj.table].join('.')}::${col}`);
       return {
         type: 'column_ref',
-        table: tbl,
-        column: col
-      };
-    }
-  / col:column {
-      columnList.add(`select::null::${col}`);
-      return {
-        type: 'column_ref',
-        table: null,
+        ...obj,
         column: col
       };
     }
@@ -2492,8 +2507,21 @@ aggr_fun_count
 
 count_arg
   = e:star_expr { return { expr: e }; }
-  / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN __ or:order_by_clause? { return { distinct: d, expr: c, orderby: or, parentheses: true }; }
-  / d:KW_DISTINCT? __ c:expr __ or:order_by_clause? { return { distinct: d, expr: c, orderby: or }; }
+  / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN tail:(__ (KW_AND / KW_OR) __ expr)* __ or:order_by_clause? {
+    const len = tail.length
+    let result = c
+    result.parentheses = true
+    for (let i = 0; i < len; ++i) {
+      result = createBinaryExpr(tail[i][1], result, tail[i][3])
+    }
+    return {
+      distinct: d,
+      expr: result,
+      orderby: or,
+    };
+  }
+  / d:KW_DISTINCT? __ c:or_and_expr __ or:order_by_clause? { return { distinct: d, expr: c, orderby: or }; }
+
 
 star_expr
   = "*" { return { type: 'star', value: '*' }; }
@@ -2781,6 +2809,7 @@ KW_FULL     = "FULL"i     !ident_start
 KW_INNER    = "INNER"i    !ident_start
 KW_CROSS    = "CROSS"i    !ident_start
 KW_JOIN     = "JOIN"i     !ident_start
+KW_APPLY    = "APPLY"i     !ident_start
 KW_OUTER    = "OUTER"i    !ident_start
 KW_OVER     = "OVER"i     !ident_start
 KW_UNION    = "UNION"i    !ident_start

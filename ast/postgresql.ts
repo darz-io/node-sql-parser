@@ -5,9 +5,9 @@
 ⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔⛔
 */
 
-export type start = multiple_stmt;
+export type start = multiple_stmt | create_function_stmt;
 
-export type cmd_stmt = drop_stmt | create_stmt | declare_stmt | truncate_stmt | rename_stmt | call_stmt | use_stmt | alter_stmt | set_stmt | lock_stmt | show_stmt | deallocate_stmt | grant_revoke_stmt | if_else_stmt | raise_stmt | execute_stmt | for_loop_stmt;
+export type cmd_stmt = drop_stmt | create_stmt | declare_stmt | truncate_stmt | rename_stmt | call_stmt | use_stmt | alter_stmt | set_stmt | lock_stmt | show_stmt | deallocate_stmt | grant_revoke_stmt | if_else_stmt | raise_stmt | execute_stmt | for_loop_stmt | transaction_stmt;
 
 export type create_stmt = create_table_stmt | create_constraint_trigger | create_extension_stmt | create_index_stmt | create_sequence | create_db_stmt | create_domain_stmt | create_type_stmt | create_view_stmt | create_aggregate_stmt;
 
@@ -20,7 +20,7 @@ export type crud_stmt = union_stmt | update_stmt | replace_insert_stmt | insert_
 
 export type multiple_stmt = AstStatement<curd_stmt | crud_stmt[]>;
 
-export type set_op = 'union' | 'union all' | 'union distinct';
+export type set_op = 'union' | 'union all' | 'union distinct' | 'intersect | 'except';
 
 export interface union_stmt_node extends select_stmt_node  {
          _next: union_stmt_node;
@@ -720,6 +720,16 @@ export interface for_loop_stmt {
 
 export type for_loop_stmt = AstStatement<for_loop_stmt>;
 
+export interface transaction_stmt {
+        type: 'transaction';
+        expr: {
+          type: 'origin',
+          value: string
+        }
+      }
+
+export type transaction_stmt = AstStatement<transaction_stmt>;
+
 export interface select_stmt_node extends select_stmt_nake  {
        parentheses: true;
       }
@@ -774,7 +784,7 @@ export type value_alias_clause = alias_ident;
 
 
 
-export type alias_clause = alias_ident | ident;
+export type alias_clause = alias_ident;
 
 export type into_clause = { keyword: 'var'; type: 'into'; expr: var_decl_list; } | { keyword: 'var'; type: 'into'; expr: literal_string | ident; };
 
@@ -826,6 +836,8 @@ export type table_base = { type: 'dual' } | { expr: value_clause; as?: alias_cla
 export type join_op = 'LEFT JOIN' | 'RIGHT JOIN' | 'FULL JOIN' | 'CROSS JOIN' | 'INNER JOIN';
 
 export type table_name = { db?: ident; schema?: ident, table: ident | '*'; };
+
+export type or_and_expr = binary_expr;
 
 
 
@@ -927,7 +939,7 @@ export interface replace_insert_stmt_node {
          type: 'insert' | 'replace';
          table?: [table_name];
          columns: column_list;
-         conflict?: on_clifict;
+         conflict?: on_conflict;
          values: insert_value_clause;
          partition?: insert_partition;
          returning?: returning_stmt;
@@ -1171,7 +1183,7 @@ export type concat_separator = { keyword: string | null; value: literal_string; 
 
 
 
-export type distinct_args = { distinct: 'DISTINCT'; expr: expr; orderby?: order_by_clause; parentheses: boolean; separator?: concat_separator; };
+export type distinct_args = { distinct: 'DISTINCT'; expr: expr; orderby?: order_by_clause; separator?: concat_separator; };
 
 
 
@@ -1216,6 +1228,12 @@ export type cast_double_colon = {
 
 
 export type cast_expr = {
+        type: 'cast';
+        expr: or_expr | column_ref | param
+          | expr;
+        keyword: 'cast';
+        ...cast_double_colon;
+      } | {
         type: 'cast';
         expr: literal | aggr_func | func_call | case_expr | interval_expr | column_ref | param
           | expr;
@@ -1359,6 +1377,10 @@ type KW_JOIN = never;
 type KW_OUTER = never;
 
 type KW_UNION = never;
+
+type KW_INTERSECT = never;
+
+type KW_EXCEPT = never;
 
 type KW_VALUES = never;
 

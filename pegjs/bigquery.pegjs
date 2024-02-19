@@ -43,6 +43,7 @@
     'IN': true,
     'INNER': true,
     'INSERT': true,
+    'INTERSECT': true,
     'INTO': true,
     'IS': true,
 
@@ -1877,6 +1878,15 @@ table_name
       }
       return obj;
     }
+or_and_expr
+	= head:expr tail:(__ (KW_AND / KW_OR) __ expr)* {
+    const len = tail.length
+    let result = head
+    for (let i = 0; i < len; ++i) {
+      result = createBinaryExpr(tail[i][1], result, tail[i][3])
+    }
+    return result
+  }
 
 on_clause
   = KW_ON __ e:or_and_where_expr { return e; }
@@ -1969,13 +1979,13 @@ window_frame_preceding
 window_frame_current_row
   = 'CURRENT'i __ 'ROW'i {
     // => { type: 'single_quote_string'; value: string }
-    return { type: 'single_quote_string', value: 'current row' }
+    return { type: 'single_quote_string', value: 'current row', ...getLocationObject() }
   }
 
 window_frame_value
   = s:'UNBOUNDED'i {
     // => literal_string
-    return { type: 'single_quote_string', value: s.toUpperCase() }
+    return { type: 'single_quote_string', value: s.toUpperCase(), ...getLocationObject() }
   }
   / literal_numeric
 
@@ -2008,7 +2018,8 @@ limit_clause
       if (tail) res.push(tail[2]);
       return {
         seperator: tail && tail[0] && tail[0].toLowerCase() || '',
-        value: res
+        value: res,
+        ...getLocationObject(),
       };
     }
 
@@ -2503,8 +2514,21 @@ aggr_fun_count
 
 count_arg
   = e:star_expr { return { expr: e, ...getLocationObject() }; }
-  / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN __ or:order_by_clause? {  return { distinct: d, expr: c, orderby: or, parentheses: true, ...getLocationObject() }; }
-  / d:KW_DISTINCT? __ c:expr __ or:order_by_clause? {  return { distinct: d, expr: c, orderby: or, parentheses: false, ...getLocationObject() }; }
+  / d:KW_DISTINCT? __ LPAREN __ c:expr __ RPAREN tail:(__ (KW_AND / KW_OR) __ expr)* __ or:order_by_clause? {
+    const len = tail.length
+    let result = c
+    result.parentheses = true
+    for (let i = 0; i < len; ++i) {
+      result = createBinaryExpr(tail[i][1], result, tail[i][3])
+    }
+    return {
+      distinct: d,
+      expr: result,
+      orderby: or,
+      ...getLocationObject()
+    };
+  }
+  / d:KW_DISTINCT? __ c:or_and_expr __ or:order_by_clause?  { return { distinct: d, expr: c, orderby: or, ...getLocationObject() }; }
 
 star_expr
   = "*" { return { type: 'star', value: '*' }; }
@@ -2696,13 +2720,15 @@ literal_string
   = r:'R'i? __ ca:("'" single_char* "'") {
       return {
         type: r ? 'regex_string' : 'single_quote_string',
-        value: ca[1].join('')
+        value: ca[1].join(''),
+        ...getLocationObject()
       };
     }
   / r:'R'i? __ ca:("\"" single_quote_char* "\"") {
       return {
         type: r ? 'regex_string' : 'string',
-        value: ca[1].join('')
+        value: ca[1].join(''),
+        ...getLocationObject()
       };
     }
 
@@ -2940,12 +2966,13 @@ KW_CURRENT_DATE     = "CURRENT_DATE"i !ident_start { return 'CURRENT_DATE'; }
 KW_ADD_DATE         = "ADDDATE"i !ident_start { return 'ADDDATE'; }
 KW_INTERVAL         = "INTERVAL"i !ident_start { return 'INTERVAL'; }
 KW_UNIT_YEAR        = "YEAR"i !ident_start { return 'YEAR'; }
-KW_UNIT_ISOYEAR        = "ISOYEAR"i !ident_start { return 'ISOYEAR'; }
+KW_UNIT_ISOYEAR     = "ISOYEAR"i !ident_start { return 'ISOYEAR'; }
 KW_UNIT_MONTH       = "MONTH"i !ident_start { return 'MONTH'; }
 KW_UNIT_DAY         = "DAY"i !ident_start { return 'DAY'; }
 KW_UNIT_HOUR        = "HOUR"i !ident_start { return 'HOUR'; }
 KW_UNIT_MINUTE      = "MINUTE"i !ident_start { return 'MINUTE'; }
 KW_UNIT_SECOND      = "SECOND"i !ident_start { return 'SECOND'; }
+KW_UNIT_WEEK        = "WEEK"i !ident_start { return 'WEEK'; }
 KW_CURRENT_TIME     = "CURRENT_TIME"i !ident_start { return 'CURRENT_TIME'; }
 KW_CURRENT_TIMESTAMP= "CURRENT_TIMESTAMP"i !ident_start { return 'CURRENT_TIMESTAMP'; }
 KW_SESSION_USER     = "SESSION_USER"i !ident_start { return 'SESSION_USER'; }
@@ -3016,6 +3043,7 @@ interval_unit
   / KW_UNIT_HOUR
   / KW_UNIT_MINUTE
   / KW_UNIT_SECOND
+  / KW_UNIT_WEEK
 
 whitespace =
   [ \t\n\r]
