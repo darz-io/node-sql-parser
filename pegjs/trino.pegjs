@@ -96,6 +96,24 @@
     'PERSIST_ONLY': true,
   };
 
+  const reservedFunctionName = {
+    avg: true,
+    sum: true,
+    count: true,
+    max: true,
+    min: true,
+    group_concat: true,
+    std: true,
+    variance: true,
+    current_date: true,
+    current_time: true,
+    current_timestamp: true,
+    current_user: true,
+    user: true,
+    session_user: true,
+    system_user: true
+  }
+
   function getLocationObject() {
     return options.includeLocations ? {loc: location()} : {}
   }
@@ -2052,8 +2070,8 @@ distinct_on
     }
   }
 
-select_stmt_nake
-  = __ cte:with_clause? __ KW_SELECT ___
+select_stmt_nake_base
+  = __ KW_SELECT ___
     opts:option_clause? __
     d:distinct_on?      __
     c:column_clause     __
@@ -2068,7 +2086,6 @@ select_stmt_nake
     win:window_clause? __
     li:into_clause? {
       /* => {
-          with?: with_clause;
           type: 'select';
           options?: option_clause;
           distinct?: {type: string; columns?: column_list; };
@@ -2087,7 +2104,6 @@ select_stmt_nake
       }
       if(f) f.forEach(info => info.table && tableList.add(`select::${info.db}::${info.table}`));
       return {
-          with: cte,
           type: 'select',
           options: opts,
           distinct: d,
@@ -2105,6 +2121,20 @@ select_stmt_nake
           window: win,
           ...getLocationObject()
       };
+  }
+
+select_stmt_nake
+  = __ cte:with_clause? s:select_stmt_nake_base {
+    return {
+      with: cte,
+      ...s
+    }
+  }
+  / __ cte:with_clause? __ '('? s:select_stmt_nake_base __ ')'? {
+    return {
+      with: cte,
+      ...s
+    }
   }
 
 // MySQL extensions to standard SQL
@@ -2236,7 +2266,7 @@ column_list_item
   }
   / e:expr_item  __ alias:alias_clause? {
     // => { type: 'expr'; expr: expr; as?: alias_clause; }
-      return { type: 'expr', expr: e, as: alias, ...getLocationObject(), };
+      return { type: 'expr', expr: e, as: alias, ...getLocationObject() };
     }
 
 value_alias_clause
@@ -3330,6 +3360,12 @@ primary
       value: `$<${n.value}>`,
     }
   }
+  / __ prepared_symbol:'?' {
+    return {
+      type: 'origin',
+      value: prepared_symbol
+    }
+  }
 
 string_constants_escape
   = 'E'i"'" __ n:single_char* __ "'" {
@@ -3474,9 +3510,9 @@ ident_name
       return start + parts.join('');
     }
 
-ident_start = [A-Za-z_\u4e00-\u9fa5]
+ident_start = [A-Za-z_]
 
-ident_part  = [A-Za-z0-9_\-$\u4e00-\u9fa5]
+ident_part  = [A-Za-z0-9_$\u0080-\uffff]
 
 // to support column name like `cf1:name` in hbase
 column_part  = [A-Za-z0-9_\u4e00-\u9fa5]
@@ -3620,6 +3656,15 @@ aggr_fun_count
         type: 'aggr_func',
         name: name,
         args: arg,
+        over: bc
+      };
+    }
+   / name:(KW_COUNT) __ LPAREN __ RPAREN __ bc:over_partition? {
+    // => { type: 'aggr_func'; name: 'COUNT' | 'GROUP_CONCAT'; args:count_arg; over: over_partition }
+      return {
+        type: 'aggr_func',
+        name: name,
+        args: {expr: { type: 'star', value: '' }},
         over: bc
       };
     }
@@ -3815,13 +3860,14 @@ func_call
         over: up
     }
   }
-  / name:proc_func_name __ LPAREN __ l:or_and_where_expr? __ RPAREN {
-      // => { type: 'function'; name: string; args: expr_list; }
-      if (l && l.type !== 'expr_list') l = { type: 'expr_list', value: [l] }
+  / name:proc_func_name &{ return name.toLowerCase() !== 'convert' && !reservedFunctionName[name.toLowerCase()] } __ LPAREN __ l:or_and_where_expr? __ RPAREN __ bc:over_partition? {
+    if (l && l.type !== 'expr_list') l = { type: 'expr_list', value: [l] }
+    if ((name.toUpperCase() === 'TIMESTAMPDIFF' || name.toUpperCase() === 'TIMESTAMPADD') && l.value && l.value[0]) l.value[0] = { type: 'origin', value: l.value[0].column }
       return {
         type: 'function',
         name: name,
-        args: l ? l: { type: 'expr_list', value: [] }
+        args: l ? l: { type: 'expr_list', value: [] },
+        over: bc
       };
     }
 
@@ -3886,7 +3932,7 @@ cast_double_colon
     }
   }
 cast_expr
-  = c:KW_CAST __ LPAREN __ e:expr __ KW_AS __ t:data_type __ RPAREN __ a:((DOUBLE_ARROW / SINGLE_ARROW) __ (literal_string / literal_numeric))*  {
+  = c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ t:data_type __ RPAREN __ a:((DOUBLE_ARROW / SINGLE_ARROW) __ (literal_string / literal_numeric))*  {
     // => IGNORE
     return {
       type: 'cast',
@@ -3898,7 +3944,7 @@ cast_expr
       properties: a.map(item => item[2]),
     };
   }
-  / c:KW_CAST __ LPAREN __ e:expr __ KW_AS __ KW_DECIMAL __ LPAREN __ precision:int __ RPAREN __ RPAREN {
+  / c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ KW_DECIMAL __ LPAREN __ precision:int __ RPAREN __ RPAREN {
     // => IGNORE
     return {
       type: 'cast',
@@ -3910,7 +3956,7 @@ cast_expr
       }
     };
   }
-  / c:KW_CAST __ LPAREN __ e:expr __ KW_AS __ KW_DECIMAL __ LPAREN __ precision:int __ COMMA __ scale:int __ RPAREN __ RPAREN {
+  / c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ KW_DECIMAL __ LPAREN __ precision:int __ COMMA __ scale:int __ RPAREN __ RPAREN {
       // => IGNORE
       return {
         type: 'cast',
@@ -3922,7 +3968,7 @@ cast_expr
         }
       };
     }
-  / c:KW_CAST __ LPAREN __ e:expr __ KW_AS __ s:signedness __ t:KW_INTEGER? __ RPAREN { /* MySQL cast to un-/signed integer */
+  / c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ s:signedness __ t:KW_INTEGER? __ RPAREN { /* MySQL cast to un-/signed integer */
     // => IGNORE
     return {
       type: 'cast',
@@ -4264,6 +4310,7 @@ KW_ELSE     = "ELSE"i       !ident_start
 KW_END      = "END"i        !ident_start
 
 KW_CAST     = "CAST"i       !ident_start { return 'CAST' }
+KW_TRY_CAST = "TRY_CAST"i   !ident_start { return 'TRY_CAST' }
 
 KW_BOOL     = "BOOL"i     !ident_start { return 'BOOL'; }
 KW_BOOLEAN  = "BOOLEAN"i  !ident_start { return 'BOOLEAN'; }
