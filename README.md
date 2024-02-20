@@ -98,6 +98,7 @@ Import the JS file in your page:
 - TransactSQL
 - [FlinkSQL](https://ci.apache.org/projects/flink/flink-docs-stable/dev/table/sql/)
 - Snowflake(alpha)
+- [Noql](https://noql.synatic.dev/)
 - New issue could be made for other new database.
 
 ### Create AST for SQL statement
@@ -139,7 +140,7 @@ console.log(ast);
 ```javascript
 const { Parser } = require('node-sql-parser');
 const parser = new Parser();
-const ast = parser.astify('SELECT * FROM t', { includeLocations: true });
+const ast = parser.astify('SELECT * FROM t', { parseOptions: { includeLocations: true } });
 
 console.log(ast);
 ```

@@ -19,11 +19,14 @@ import { LocationRange } from "pegjs";
 export { LocationRange, Location } from "pegjs";
 
 export type WhilteListCheckMode = "table" | "column";
+export interface ParseOptions {
+  includeLocations?: boolean;
+}
 export interface Option {
   database?: string;
   type?: string;
-  includeLocations?: boolean;
   trimQuery?: boolean;
+  parseOptions?: ParseOptions;
 }
 export interface TableColumnAst {
   tableList: string[];
@@ -80,11 +83,20 @@ export interface Star {
   value: "*";
   loc?: LocationRange;
 }
+export interface Case {
+  type: "case";
+  expr: null;
+  args: Array<{
+    cond: ColumnRef | AggrFunc | Function;
+    result: ColumnRef | AggrFunc | Function;
+    type: "when";
+  }>;
+}
 export interface AggrFunc {
   type: "aggr_func";
   name: string;
   args: {
-    expr: ColumnRef | AggrFunc | Star | null;
+    expr: ColumnRef | AggrFunc | Star | Case | null;
     distinct: "DISTINCT" | null;
     orderby: OrderBy[] | null;
     parentheses?: boolean;
@@ -120,8 +132,8 @@ export type Expr =
   | {
     type: "binary_expr";
     operator: string;
-    left: ColumnRef | Param | Value;
-    right: ColumnRef | Param | Value;
+    left: ColumnRef | Param | Function | Case | Value;
+    right: ColumnRef | Param | Function | Case | Value;
     loc?: LocationRange;
   };
 
