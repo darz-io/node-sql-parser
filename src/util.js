@@ -136,6 +136,7 @@ function columnIdentifierToSql(ident) {
     case 'redshift':
     case 'snowflake':
     case 'noql':
+    case 'trino':
       return `"${ident}"`
     case 'transactsql':
       return `[${ident}]`
@@ -160,6 +161,7 @@ function identifierToSql(ident, isDual) {
     case 'postgresql':
     case 'redshift':
     case 'snowflake':
+    case 'trino':
     case 'noql':
       return `"${ident}"`
     case 'transactsql':
