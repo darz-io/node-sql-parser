@@ -5,7 +5,7 @@
 // TypeScript Version: 2.4
 
 export interface With {
-  name: string;
+  name: { value: string };
   stmt: {
     _parentheses?: boolean;
     tableList: string[];
@@ -114,14 +114,14 @@ export interface Case {
   }>;
 }
 export interface Cast {
-	type: "cast";
-	keyword: "cast";
-	expr: Expr;
-	symbol: "as";
-	target: {
-		dataType: string;
-		 suffix: unknown[];
-	}
+  type: "cast";
+  keyword: "cast";
+  expr: Expr;
+  symbol: "as";
+  target: {
+    dataType: string;
+    suffix: unknown[];
+  }
 }
 export interface AggrFunc {
   type: "aggr_func";
@@ -135,7 +135,7 @@ export interface AggrFunc {
   loc?: LocationRange;
 }
 
-export type FunctionName = { schema?: string, name: ValueExpr<string>[] }
+export type FunctionName = { schema?: { value: string, type: string } , name: ValueExpr<string>[] }
 export interface Function {
   type: "function";
   name: FunctionName;
