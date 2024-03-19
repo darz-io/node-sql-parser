@@ -150,11 +150,17 @@ export interface Column {
   loc?: LocationRange;
 }
 
+export interface Interval {
+    type: "interval";
+    unit: string;
+    expr: ValueExpr & { loc?: LocationRange; }
+}
+
 export type Param = { type: "param"; value: string, loc?: LocationRange; };
 
 export type Value = { type: string; value: any, loc?: LocationRange; };
 
-export type ExpressionValue = ColumnRef | Param | Function | Case | AggrFunc | Value | Cast;
+export type ExpressionValue = ColumnRef | Param | Function | Case | AggrFunc | Value | Cast | Interval;
 export type Expr =
   | {
     type: "binary_expr";
