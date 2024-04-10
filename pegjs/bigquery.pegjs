@@ -2039,7 +2039,6 @@ expr_list
 _expr
   = struct_expr
   / json_expr
-  / logic_operator_expr // support concatenation operator || and &&
   / or_expr
   / unary_expr
   / array_expr
@@ -2075,15 +2074,24 @@ array_expr
       brackets: true,
     }
   }
-  / s:(array_type / KW_ARRAY)? __ l:(LBRAKE / LPAREN) __ c:(parentheses_list_expr / expr) __ r:(RBRAKE / RPAREN) {
-    if (`${l}${r}` !== '[]' && `${l}${r}` !== '()') throw new Error('parentheses or brackets is not in pair')
+   / s:(array_type / KW_ARRAY)? __ l:(LBRAKE) __ c:(parentheses_list_expr / expr) __ r:(RBRAKE) {
     return {
       definition: s,
       expr_list: c,
       type: 'array',
       keyword: s && 'array',
-      brackets: l === '[' ? true : false,
-      parentheses: l === '(' ? true: false
+      brackets: true,
+      parentheses: false
+    }
+  }
+  / s:(array_type / KW_ARRAY) __ l:(LPAREN) __ c:(parentheses_list_expr / expr) __ r:(RPAREN) {
+    return {
+      definition: s,
+      expr_list: c,
+      type: 'array',
+      keyword: s && 'array',
+      brackets: false,
+      parentheses: true
     }
   }
 
@@ -2105,14 +2113,6 @@ struct_expr
       keyword: s && 'struct',
       parentheses: true
     }
-  }
-
-logic_operator_expr
-  = head:primary tail:(__ LOGIC_OPERATOR __ primary)+ __ rh:comparison_op_right? {
-    const logicExpr = createBinaryExprChain(head, tail)
-    if (rh === null) return logicExpr
-    else if (rh.type === 'arithmetic') return createBinaryExprChain(logicExpr, rh.tail)
-    else return createBinaryExpr(rh.op, logicExpr, rh.right)
   }
 
 unary_expr
@@ -2202,7 +2202,7 @@ comparison_op_right
   / like_op_right
 
 arithmetic_op_right
-  = l:(__ arithmetic_comparison_operator __ (logic_operator_expr / additive_expr))+ {
+  = l:(__ arithmetic_comparison_operator __ (additive_expr))+ {
       return { type: 'arithmetic', tail: l };
     }
 
@@ -2264,7 +2264,7 @@ additive_operator
 
 multiplicative_expr
   = head:primary
-    tail:(__ multiplicative_operator  __ primary)* {
+    tail:(__ (multiplicative_operator / LOGIC_OPERATOR)  __ primary)* {
       return createBinaryExprChain(head, tail)
     }
 
@@ -2273,12 +2273,12 @@ multiplicative_operator
 
 primary
   = array_expr
+  / aggr_func
+  / func_call
   / struct_expr
   / json_expr
   / cast_expr
   / literal
-  / aggr_func
-  / func_call
   / case_expr
   / interval_expr
   / column_ref

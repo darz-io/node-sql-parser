@@ -511,7 +511,7 @@ create_table_stmt
     KW_TABLE __
     ife:if_not_exists_stmt? __
     t:table_ref_list __
-    c:create_table_definition __
+    c:create_table_definition? __
     to:table_options? __
     ir: (KW_IGNORE / KW_REPLACE)? __
     as: KW_AS? __
@@ -2159,6 +2159,15 @@ array_index
       index: n
     }
   }
+  / d:DOT __ n:ident {
+    return {
+      notation: d,
+      index: {
+        type: 'default',
+        value: n
+      }
+    }
+  }
 array_index_list
   = head:array_index tail:(__ array_index)* {
     return createList(head, tail, 1)
@@ -3050,37 +3059,11 @@ case_else = KW_ELSE __ result:expr {
  */
 
 _expr
-  = logic_operator_expr // support concatenation operator || and &&
-  / or_expr
+  = or_expr
   / unary_expr
 
 expr
   = _expr / union_stmt
-
-logic_operator_expr
-  = head:primary tail:(__ LOGIC_OPERATOR __ primary)+ __ rh:comparison_op_right? {
-    /*
-    export type BINARY_OPERATORS = LOGIC_OPERATOR | 'OR' | 'AND' | multiplicative_operator | additive_operator
-      | arithmetic_comparison_operator
-      | 'IN' | 'NOT IN'
-      | 'BETWEEN' | 'NOT BETWEEN'
-      | 'IS' | 'IS NOT'
-      | 'LIKE'
-      | 'REGEXP' | 'NOT REGEXP'
-      | '@>' | '<@' | OPERATOR_CONCATENATION | DOUBLE_WELL_ARROW | WELL_ARROW | '?' | '?|' | '?&' | '#-'
-    export interface binary_expr {
-      type: 'binary_expr',
-      operator: BINARY_OPERATORS,
-      left: expr,
-      right: expr
-    }
-    => binary_expr
-    */
-    const logicExpr = createBinaryExprChain(head, tail)
-    if (rh === null) return logicExpr
-    else if (rh.type === 'arithmetic') return createBinaryExprChain(logicExpr, rh.tail)
-    else return createBinaryExpr(rh.op, logicExpr, rh.right)
-  }
 
 unary_expr
   = op: additive_operator tail: (__ primary)+ {
@@ -3308,7 +3291,7 @@ additive_operator
 
 multiplicative_expr
   = head:primary
-    tail:(__ multiplicative_operator  __ primary)* {
+    tail:(__  (multiplicative_operator / LOGIC_OPERATOR)  __ primary)* {
       // => binary_expr
       return createBinaryExprChain(head, tail)
     }
@@ -3346,7 +3329,8 @@ string_constants_escape
       value: `E'${n.join('')}'`
     }
   }
-
+column_symbol
+  = DOT / KW_SINGLE_COLON
 column_ref
   = string_constants_escape
   / tbl:(ident __ DOT)? __ STAR {
@@ -3360,7 +3344,7 @@ column_ref
           ...getLocationObject()
       }
     }
-  / tbl:(ident __ DOT)? __ col:column __ a:((DOUBLE_ARROW / SINGLE_ARROW) __ (literal_string / literal_numeric))+ {
+  / tbl:(ident __ column_symbol)? __ col:column __ a:((DOUBLE_ARROW / SINGLE_ARROW) __ (literal_string / literal_numeric))+ {
     // => IGNORE
       const tableName = tbl && tbl[0] || null
       columnList.add(`select::${tableName}::${col}`)
@@ -3368,17 +3352,19 @@ column_ref
         type: 'column_ref',
         table: tableName,
         column: col,
+        notations: [tbl && tbl[2]],
         arrows: a.map(item => item[0]),
         properties: a.map(item => item[2]),
         ...getLocationObject()
       };
   }
-  / schema:ident tbl:(__ DOT __ ident) col:(__ DOT __ column) {
+  / schema:ident tbl:(__ column_symbol __ ident) col:(__ column_symbol __ column) {
     /* => {
         type: 'column_ref';
         schema: string;
         table: string;
         column: column | '*';
+        notations: string[];
         arrows?: ('->>' | '->')[];
         property?: (literal_string | literal_numeric)[];
       } */
@@ -3386,16 +3372,18 @@ column_ref
       return {
         type: 'column_ref',
         schema: schema,
+        notations: [tbl[1], col[1]],
         table: tbl[3],
         column: col[3],
         ...getLocationObject()
       };
     }
-  / tbl:ident __ DOT __ col:column {
+  / tbl:ident __ s:column_symbol __ col:column {
       /* => {
         type: 'column_ref';
         table: ident;
         column: column | '*';
+        notations: string[];
         arrows?: ('->>' | '->')[];
         property?: (literal_string | literal_numeric)[];
       } */
@@ -3403,6 +3391,7 @@ column_ref
       return {
         type: 'column_ref',
         table: tbl,
+        notations: [s],
         column: col,
         ...getLocationObject()
       };
@@ -4180,7 +4169,7 @@ int
   = digits
   / digit:digit
   / op:("-" / "+" ) digits:digits { return op + digits; }
-   / op:("-" / "+" ) digit:digit { return op + digit; }
+  / op:("-" / "+" ) digit:digit { return op + digit; }
 
 frac
   = "." digits:digits { return "." + digits; }
@@ -4382,6 +4371,7 @@ KW_VAR_PRE
 KW_RETURN = 'return'i
 KW_ASSIGN = ':='
 KW_DOUBLE_COLON = '::'
+KW_SINGLE_COLON = ':'
 KW_ASSIGIN_EQUAL = '='
 
 KW_DUAL = "DUAL"i
