@@ -2991,7 +2991,7 @@ value_item
 expr_list
   = head:expr tail:(__ COMMA __ expr)* {
     // => { type: 'expr_list'; value: expr[] }
-      const el = { type: 'expr_list' };
+      const el = { type: 'expr_list', ...getLocationObject(), };
       el.value = createList(head, tail);
       return el;
     }
@@ -3014,6 +3014,7 @@ interval_expr
         type: 'interval',
         expr: e,
         unit: '',
+        ...getLocationObject(),
       }
     }
 
@@ -3032,7 +3033,8 @@ case_expr
       return {
         type: 'case',
         expr: null,
-        args: condition_list
+        args: condition_list,
+        ...getLocationObject(),
       };
     }
   / KW_CASE                        __
@@ -3050,7 +3052,8 @@ case_expr
       return {
         type: 'case',
         expr: expr,
-        args: condition_list
+        args: condition_list,
+        ...getLocationObject(),
       };
     }
 
@@ -3066,13 +3069,14 @@ case_when_then
     return {
       type: 'when',
       cond: condition,
-      result: result
+      result: result,
+      ...getLocationObject(),
     };
   }
 
 case_else = KW_ELSE __ result:expr {
     // => { type: 'else'; condition?: never; result: expr; }
-    return { type: 'else', result: result };
+    return { type: 'else', result: result, ...getLocationObject(), };
   }
 
 /**
@@ -3112,7 +3116,8 @@ lambda_expr
         value: a,
         parentheses: true
       },
-      expr: r
+      expr: r,
+      ...getLocationObject(),
     }
   }
 expr
@@ -3188,7 +3193,7 @@ or_and_where_expr
       }
     }
     if (seperator === ',') {
-      const el = { type: 'expr_list' }
+      const el = { type: 'expr_list', ...getLocationObject(), }
       el.value = result
       return el
     }
@@ -3625,13 +3630,15 @@ over_partition
     return {
       type: 'window',
       as_window_specification: aws,
+      ...getLocationObject(),
     }
   }
   / 'OVER'i __ LPAREN __ bc:partition_by_clause? __ l:order_by_clause? __ RPAREN {
     // => { partitionby: partition_by_clause; orderby: order_by_clause }
     return {
       partitionby: bc,
-      orderby: l
+      orderby: l,
+      ...getLocationObject(),
     }
   }
   / on_update_current_timestamp
@@ -3643,6 +3650,7 @@ aggr_filter
       keyword: 'filter',
       parentheses: true,
       where: wc,
+      ...getLocationObject(),
     }
   }
 
@@ -3664,7 +3672,8 @@ window_fun_rank
     return {
       type: 'window_func',
       name: name,
-      over: over
+      over: over,
+      ...getLocationObject(),
     }
   }
 
@@ -3676,7 +3685,8 @@ window_fun_laglead
       name: name,
       args: l,
       over: over,
-      consider_nulls: cn
+      consider_nulls: cn,
+      ...getLocationObject(),
     };
   }
 
@@ -3690,7 +3700,8 @@ window_fun_firstlast
         type: 'expr_list', value: [l]
       },
       over: over,
-      consider_nulls: cn
+      consider_nulls: cn,
+      ...getLocationObject(),
     };
   }
 
@@ -3720,7 +3731,8 @@ aggr_fun_smma
         args: {
           expr: e
         },
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
     }
 
@@ -3734,7 +3746,8 @@ aggr_fun_count
         type: 'aggr_func',
         name: name,
         args: arg,
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
     }
    / name:(KW_COUNT) __ LPAREN __ RPAREN __ bc:over_partition? {
@@ -3743,7 +3756,8 @@ aggr_fun_count
         type: 'aggr_func',
         name: name,
         args: {expr: { type: 'star', value: '' }},
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
     }
   / name:('percentile_cont'i / 'percentile_disc'i) __ LPAREN __ arg:(literal_numeric / literal_array) __ RPAREN __ 'within'i __ KW_GROUP __ LPAREN __ or:order_by_clause __ RPAREN __ bc:over_partition? {
@@ -3755,7 +3769,8 @@ aggr_fun_count
           expr: arg
         },
         within_group_orderby: or,
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
   }
   / name:('mode'i) __ LPAREN __ RPAREN __ 'within'i __ KW_GROUP __ LPAREN __ or:order_by_clause __ RPAREN __ bc:over_partition? {
@@ -3765,7 +3780,8 @@ aggr_fun_count
         name: name.toUpperCase(),
         args: { expr: {} },
         within_group_orderby: or,
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
   }
 
@@ -3774,7 +3790,8 @@ concat_separator
     // => { keyword: string | null; value: literal_string; }
     return {
       keyword: kw,
-      value: s
+      value: s,
+      ...getLocationObject(),
     }
   }
 
@@ -3791,12 +3808,13 @@ distinct_args
       distinct: d,
       expr: result,
       orderby: or,
-      separator: s
+      separator: s,
+      ...getLocationObject(),
     };
   }
   / d:KW_DISTINCT? __ c:or_and_expr __ or:order_by_clause? __ s:concat_separator?  {
     /* => { distinct: 'DISTINCT'; expr: expr; orderby?: order_by_clause; separator?: concat_separator; } */
-    return { distinct: d, expr: c, orderby: or, separator: s };
+    return { distinct: d, expr: c, orderby: or, separator: s, ...getLocationObject(), };
   }
 
 count_arg
@@ -3811,6 +3829,7 @@ aggr_array_agg
         name: pre ? `${pre[0]}.${name}` : name,
         args: arg,
         orderby: o,
+        ...getLocationObject(),
       };
     }
 
@@ -3910,7 +3929,8 @@ func_call
         type: 'function',
         name: { name: [{ type: 'default', value: name }] },
         args: l ? l: { type: 'expr_list', value: [] },
-        suffix: z
+        suffix: z,
+        ...getLocationObject(),
       };
     }
   / name:'FLATTEN'i __ LPAREN __ l:flattern_args __ RPAREN {
@@ -3918,6 +3938,7 @@ func_call
         type: 'flatten',
         name: { name: [{ type: 'default', value: name }] },
         args: l,
+        ...getLocationObject(),
       }
   }
   / name:scalar_func __ LPAREN __ l:expr_list? __ RPAREN __ bc:over_partition? {
@@ -3926,7 +3947,8 @@ func_call
         type: 'function',
         name: { name: [{ type: 'default', value: name }] },
         args: l ? l: { type: 'expr_list', value: [] },
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
     }
   / extract_func
@@ -3935,7 +3957,8 @@ func_call
     return {
         type: 'function',
         name: { name: [{ type: 'origin', value: f }] },
-        over: up
+        over: up,
+        ...getLocationObject(),
     }
   }
   / name:proc_func_name &{ return !reservedFunctionName[name.name[0] && name.name[0].value.toLowerCase()] } __ LPAREN __ l:or_and_where_expr? __ RPAREN __ bc:over_partition? {
@@ -3945,7 +3968,8 @@ func_call
         type: 'function',
         name: name,
         args: l ? l: { type: 'expr_list', value: [] },
-        over: bc
+        over: bc,
+        ...getLocationObject(),
       };
     }
 
@@ -3963,7 +3987,8 @@ extract_func
           field: f,
           cast_type: t,
           source: s,
-        }
+        },
+        ...getLocationObject(),
     }
   }
   / kw:KW_EXTRACT __ LPAREN __ f:extract_filed __ KW_FROM __ s:expr __ RPAREN {
@@ -4020,6 +4045,7 @@ cast_expr
       target: t,
       arrows: a.map(item => item[0]),
       properties: a.map(item => item[2]),
+      ...getLocationObject(),
     };
   }
   / c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ KW_DECIMAL __ LPAREN __ precision:int __ RPAREN __ RPAREN {
@@ -4031,7 +4057,8 @@ cast_expr
       symbol: 'as',
       target: {
         dataType: 'DECIMAL(' + precision + ')'
-      }
+      },
+      ...getLocationObject(),
     };
   }
   / c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ KW_DECIMAL __ LPAREN __ precision:int __ COMMA __ scale:int __ RPAREN __ RPAREN {
@@ -4043,7 +4070,8 @@ cast_expr
         symbol: 'as',
         target: {
           dataType: 'DECIMAL(' + precision + ', ' + scale + ')'
-        }
+        },
+        ...getLocationObject(),
       };
     }
   / c:(KW_CAST / KW_TRY_CAST) __ LPAREN __ e:expr __ KW_AS __ s:signedness __ t:KW_INTEGER? __ RPAREN { /* MySQL cast to un-/signed integer */
@@ -4055,7 +4083,8 @@ cast_expr
       symbol: 'as',
       target: {
         dataType: s + (t ? ' ' + t: '')
-      }
+      },
+      ...getLocationObject(),
     };
   }
   / LPAREN __ e:(literal / aggr_func / window_func / func_call / case_expr / interval_expr / column_ref_array_index / param) __ RPAREN __ c:cast_double_colon?  {
@@ -4074,6 +4103,7 @@ cast_expr
       keyword: 'cast',
       expr: e,
       ...c,
+      ...getLocationObject(),
     }
   }
   / e:(literal / aggr_func / window_func / func_call / case_expr / interval_expr / column_ref_array_index / param) __ c:cast_double_colon? {
@@ -4091,6 +4121,7 @@ cast_expr
       keyword: 'cast',
       expr: e,
       ...c,
+      ...getLocationObject(),
     }
   }
 
@@ -4121,7 +4152,8 @@ literal_array
       expr_list: c || { type: 'origin', value: '' },
       type: 'array',
       keyword: 'array',
-      brackets: true
+      brackets: true,
+      ...getLocationObject(),
     }
   }
 
@@ -4236,7 +4268,8 @@ number
     const numStr = (int_ || '') + frac + exp
     return {
       type: 'bigint',
-      value: numStr
+      value: numStr,
+      ...getLocationObject(),
     }
   }
   / int_:int? frac:frac {
@@ -4244,7 +4277,8 @@ number
     const numStr = (int_ || '') + frac
     if (int_ && isBigInt(int_)) return {
       type: 'bigint',
-      value: numStr
+      value: numStr,
+      ...getLocationObject(),
     }
     return parseFloat(numStr);
   }
@@ -4253,7 +4287,8 @@ number
     const numStr = int_ + exp
     return {
       type: 'bigint',
-      value: numStr
+      value: numStr,
+      ...getLocationObject(),
     }
   }
   / int_:int {
@@ -4630,7 +4665,8 @@ proc_join
         ltable: lt,
         rtable: rt,
         op: op,
-        on: expr
+        on: expr,
+      ...getLocationObject(),
       };
     }
 
@@ -4665,7 +4701,8 @@ proc_func_call
         args: {
           type: 'expr_list',
           value: l
-        }
+        },
+        ...getLocationObject(),
       };
     }
   / name:proc_func_name {
@@ -4673,7 +4710,8 @@ proc_func_call
     return {
         type: 'function',
         name: name,
-        args: null
+        args: null,
+       ...getLocationObject(),
       };
   }
 
@@ -4778,11 +4816,11 @@ data_type
 array_type
   = t:(numeric_type / character_string_type) __ LBRAKE __ RBRAKE __ LBRAKE __ RBRAKE {
     /* => data_type */
-    return { ...t, array: 'two' }
+    return { ...t, array: 'two', ...getLocationObject(), }
   }
   / t:(numeric_type / character_string_type) __ LBRAKE __ RBRAKE {
     /* => data_type */
-    return { ...t, array: 'one' }
+    return { ...t, array: 'one', ...getLocationObject(), }
   }
 
 boolean_type

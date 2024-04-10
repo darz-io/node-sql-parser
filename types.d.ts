@@ -156,6 +156,11 @@ export interface Interval {
     expr: ValueExpr & { loc?: LocationRange; }
 }
 
+export interface ArrayExpr {
+    type: "array";
+    expr_list: ExprList;
+}
+
 export type Param = { type: "param"; value: string, loc?: LocationRange; };
 
 export type Value = { type: string; value: any, loc?: LocationRange; };
